@@ -2,14 +2,19 @@
 
 This file provides guidance to opencode agent when working with code in this repository.
 
-Burp Suite Extension template project using the Montoya API (minimal starter project).
+Burp Suite Extension for exporting project data (proxy history, site map) as CSV, plus regex search of responses as JSON.
 
 ## Architecture
 
 - **Main Entry Point**: `src/main/java/Extension.java` - implements `BurpExtension` interface
+- **GUI Panel**: `src/main/java/ParserPanel.java` - Swing JPanel registered as a Burp Suite tab
+- **Config Model**: `src/main/java/ParsingConfig.java` - record holding all export options
 - **Build System**: Gradle with Kotlin DSL, Java 21 compatibility
-- **Dependencies**: Montoya API 2025.10 (compile-only), no runtime dependencies
-- **Extension Pattern**: Single-class extension that initializes through `initialize(MontoyaApi montoyaApi)` method
+- **Dependencies**: Montoya API 2026.4 (compile-only), Gson 2.14.0 (bundled)
+
+## Extension Pattern
+
+GUI-only extension. In `initialize()`, registers a suite tab via `api.userInterface().registerSuiteTab()`. The tab lets users select which data to export, configure options, and save results to file.
 
 ## Build Commands
 
@@ -25,15 +30,16 @@ JAR output: `build/libs/` - load directly into Burp Suite.
 
 1. Build JAR: `./gradlew jar`
 2. Burp: Extensions > Installed > Add > Select JAR
-3. Quick reload: Ctrl/Click the Loaded checkbox
+3. Go to **"BurpSuite Extractor"** tab in the main window
+4. Quick reload: Ctrl/Click the Loaded checkbox
 
 ## Docs
 
-- `docs/bapp-store-requirements.md` - BApp Store requirements
+- `USAGE.md` - CSV format, column descriptions, usage
 - `docs/montoya-api-examples.md` - Code patterns
 - `docs/development-best-practices.md` - Dev guidelines
 - `docs/resources.md` - External links
 
 ## Current State
 
-Template project. Main class sets extension name to "My Extension" with a TODO placeholder.
+GUI extension. Main class registers "BurpSuite Extractor" tab. Processing methods: printProxyHistory, printHistory, processResponseHeaders, processResponseBodies. CSV output via writeCsvHeader/escapeCsv helpers.

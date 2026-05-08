@@ -1,205 +1,47 @@
-# Implementation Plan: GUI Tab + Ignore Static Files + CSV Export
+# Implementation Plan: GUI-Only Burp Suite Project File Parser
 
 ## Overview
 
-Add a Burp Suite tab (`registerSuiteTab`) that lets users interactively choose which flags to run and where to save output, alongside the existing headless CLI mode.
+GUI-only Burp Suite extension that registers a "BurpSuite Extractor" tab via `registerSuiteTab()`. Users select data sources, configure options, and export results to CSV or JSON.
 
-## Mode Detection
+## Architecture
 
-In `initialize()`, detect if CLI flags are present:
-- **CLI flags present** → run headless CLI path (existing behavior, unchanged)
-- **No CLI flags** → register Suite tab for interactive GUI use
+### `Extension.java` — Entry point
+- Implements `BurpExtension`
+- `initialize()` registers the Suite tab with a `ParserPanel` instance
+- Contains all processing logic: `printProxyHistory()`, `printHistory()`, `processResponseHeaders()`, `processResponseBodies()`
+- Helper methods: `escapeCsv()`, `formatHeaders()`, `extractHost()`, `writeCsvHeader()`, `isIgnored()`
+- `writeOutput()` / `writeError()` send to both Burp log and optional file
 
-## New File: `ParserPanel.java`
+### `ParserPanel.java` — Swing UI
+- JPanel with checkboxes for proxy history / site map / include responses
+- Regex search text fields for response headers/bodies
+- Ignore static files text field (comma-separated extensions)
+- Output file path + Browse button (JFileChooser)
+- Run button with SwingWorker for background processing
+- Status label and progress bar
 
-A Swing `JPanel` with these sections:
-
-### Flag Checkboxes (top)
-- `proxyHistory` — checkbox
-- `siteMap` — checkbox
-
-### Search Section (middle)
-- `responseHeader` — checkbox + text field for regex
-- `responseBody` — checkbox + text field for regex
-
-### Output File Section (middle)
-- Text field for file path
-- "Browse..." button that opens `JFileChooser` for file save
-
-### Actions (bottom)
-- "Run" button — executes parsing on background thread via `SwingWorker`
-- Status label — shows "Running...", "Complete", or error messages
-
-### Styling
-- Panel organized with `BorderLayout` / `GridBagLayout`
-- `api.userInterface().applyThemeToComponent(panel)` for Burp-native look
-
-## Modified: `Extension.java`
-
-### Refactored `initialize()`
-```java
-String[] args = api.burpSuite().commandLineArguments().toArray(new String[0]);
-if (containsAny(args, "...")) {
-    // CLI path: existing headless logic
-    runFromCli(args);
-} else {
-    // GUI path: register Suite tab
-    api.userInterface().registerSuiteTab("Project Parser", new ParserPanel(api));
-}
-```
-
-### Extracted `runFromCli(String[] args)`
-Contains all the current CLI processing logic (flag parsing, proxy history, site map, response search, output file, shutdown).
-
-### Reusable `runParser(args)` (used by both CLI and GUI)
-Extracts the core parsing logic that both paths can call: proxy history, site map, response search, file output.
+### `ParsingConfig.java` — Data model
+- Record holding all user-selected options
+- `parseExtensions()` helper for parsing ignore extension lists
+- `DEFAULT_IGNORED_EXTENSIONS` constant
 
 ## Data Flow
 
-### GUI Run button:
-1. User checks flags, sets regex, chooses output file
-2. User clicks "Run"
-3. `SwingWorker.doInBackground()` calls a new `executeParsing()` method
-4. Results stream to Burp Output tab + output file
-5. Status label updates on EDT via `SwingWorker.done()`
+1. User selects options in the tab and clicks "Run"
+2. `SwingWorker.doInBackground()` calls `Extension.executeParsing(config)`
+3. Results stream to Burp Output tab + optional output file
+4. Status label updates on EDT via `SwingWorker.done()`
 
-### CLI path:
-1. Burp loads extension headless with `--project-file=...`
-2. `runFromCli(args)` executes the same `executeParsing()` logic
-3. Extension unloads and Burp shuts down
+## Files
 
-## Thread Safety
+| File | Purpose |
+|------|---------|
+| `Extension.java` | Entry point + processing logic |
+| `ParserPanel.java` | Swing UI panel |
+| `ParsingConfig.java` | Configuration data record |
 
-- GUI Run button triggers `SwingWorker` to keep UI responsive
-- File writing synchronized via existing `writeOutput`/`writeError` methods
-- No shared mutable state between GUI threads
-
----
-
-# Phase 2: Ignore Static File Extensions
-
-## Overview
-
-Allow users to skip URLs ending in common static file extensions (gif, jpg, png, css, etc.) when extracting data from proxy history and site map.
-
-## Changes
-
-### `ParsingConfig.java`
-
-- Add `Set<String> ignoredExtensions` field
-- Default ignored extensions constant: `gif,jpg,jpeg,png,css,css2,mp3,mp4,wav,ico,map,woff,woff2,svg,ttf,pdf,otf,doc,docx`
-- Parse new CLI flag: `ignoreExt=<comma-separated-list>`
-  - No flag → use default set
-  - `ignoreExt=none` → empty set (no filtering)
-- Add `parseExtensions(String input)` helper, store as lowercased `Set<String>`
-
-### `ParserPanel.java`
-
-- New "Ignore Static Files" section between "Extract Data From" and "Search Responses"
-- Single-line `JTextField` pre-filled with default extensions
-- Label: "Skip URLs ending in these extensions (comma-separated):"
-- Pass text field value into `ParsingConfig`
-
-### `Extension.java`
-
-- Add `isIgnored(String url, Set<String> ignoredExtensions)` helper:
-  - Strip query (`?`) and fragment (`#`)
-  - Get last path segment after `/`
-  - Extract extension after last `.`
-  - Check if lowercased extension is in the ignored set
-- Apply filter in: `printProxyHistory()`, `printHistory()`, `processResponseHeaders()`, `processResponseBodies()`
-- Pass `config.ignoredExtensions()` from `executeParsing()`
-
-### URL matching logic
-
-```
-isIgnored(url, extensions):
-  path = url before '?' or '#'
-  lastSegment = path after last '/'
-  ext = lastSegment after last '.' (lowercased)
-  return ext is not empty AND extensions.contains(ext)
-```
-
-### CLI flag format
-
-```bash
-java -jar burpsuite_pro.jar --project-file=target.burp proxyHistory ignoreExt=gif,jpg,png,css
-```
-
-Omitted → uses default list. `ignoreExt=none` → no filtering.
-
-## Build Validation
-
-```bash
-./gradlew clean build
-```
-
----
-
-# Phase 3: CSV Export Format
-
-## Overview
-
-Change output format from JSON to CSV for proxy history and site map exports. Remove auditItems entirely. Response header/body search results remain as JSON.
-
-## CSV Column Format
-
-| Column | Source |
-|--------|--------|
-| No | Sequential counter (1, 2, 3...) |
-| Host | Extracted from URL via `java.net.URI(url).getHost()` |
-| Request Method | `request.method()` |
-| URL | `request.url()` (includes query) |
-| Headers | `request.headers()` joined by `\n`, CSV-escaped with `"` |
-| Body | `request.bodyToString()`, CSV-escaped |
-| Status Code | `response.statusCode()` (int) |
-| Response Body* | `response.bodyToString()`, CSV-escaped |
-
-\* Response Body column only when "include responses" is checked.
-
-## Changes
-
-### `ParsingConfig.java`
-- Remove `auditItems` field from record
-- Remove `contains(args, "auditItems")` from `fromCliArgs()`
-- Shorter constructor (10 params instead of 11)
-
-### `ParserPanel.java`
-- Remove `auditItemsCheckbox` and its row in flags panel
-- Remove `auditItems` from validation ("select at least one option")
-- Remove `auditItems` from `runParsing()` constructor call
-- Change default save filename from `output.json` → `output.csv`
-
-### `Extension.java`
-- **Remove**: `printAuditItems()`, `issueToJson()`, `headersToJsonArray()`
-- **Remove**: `auditItems` from `executeParsing()` and `hasAnyActionFlag()`
-- **Remove unused imports**: `AuditIssue`, `Gson`, `HashMap`, `Map`, `JsonArray`, `JsonElement`
-- **Add imports**: `java.net.URI`
-- **Add helpers**:
-  - `escapeCsv(String value)` — quotes if contains comma/quote/newline, escapes `"` as `""`
-  - `formatHeaders(List<HttpHeader> headers)` — joins with `\n`
-  - `extractHost(String url)` — parses host via `URI.create(url).getHost()`
-- **Rewrite** `printProxyHistory()` — CSV header row + rows with counter, host, method, URL, headers, body, status code [, response body]
-- **Rewrite** `printHistory()` — same CSV format
-- **Keep unchanged**: `processResponseHeaders()`, `processResponseBodies()` (still JSON), all other methods
-
-### `USAGE.md`
-- Remove `auditItems` from flags table and examples
-- Document CSV columns
-- Note that `responseHeader`/`responseBody` still output JSON
-- Change file references from `.json` → `.csv`
-
-## Example CSV Output
-
-```csv
-No,Host,Request Method,URL,Headers,Body,Status Code
-1,example.com,GET,https://example.com/api/users,"Host: example.com
-Accept: application/json",,200
-2,example.com,POST,https://example.com/api/login,"Host: example.com
-Content-Type: application/json","{""user"":""admin""}",302
-```
-
-## Build Validation
+## Build
 
 ```bash
 ./gradlew clean build

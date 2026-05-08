@@ -34,33 +34,14 @@ public class Extension implements BurpExtension {
 
         montoyaApi.extension().setName("BurpSuite Project File Parser");
 
-        api.extension().registerUnloadingHandler(() -> {
-            if (fileWriter != null) {
-                fileWriter.close();
-            }
-        });
+        api.extension().registerUnloadingHandler(this::closeOutputFile);
 
-        String[] args = api.burpSuite().commandLineArguments().toArray(new String[0]);
-
-        if (hasAnyActionFlag(args)) {
-            ParsingConfig config = ParsingConfig.fromCliArgs(args);
-            writeOutput(String.join(" ", args));
-            openOutputFile(config.outputFile());
-            executeParsing(config);
-            logging.logToOutput("{\"Message\":\"Project File Parsing Complete\"}");
-            closeOutputFile();
-            api.extension().unload();
-            api.burpSuite().shutdown();
-        } else {
-            api.userInterface().registerSuiteTab("BurpSuite Extractor", new ParserPanel(api, this::executeFromGui));
-        }
-    }
-
-    private void executeFromGui(ParsingConfig config) {
-        writeOutput("Running with selected options...");
-        openOutputFile(config.outputFile());
-        executeParsing(config);
-        closeOutputFile();
+        api.userInterface().registerSuiteTab("BurpSuite Extractor",
+                new ParserPanel(api, config -> {
+                    openOutputFile(config.outputFile());
+                    executeParsing(config);
+                    closeOutputFile();
+                }));
     }
 
     private void executeParsing(ParsingConfig config) {
@@ -261,17 +242,6 @@ public class Extension implements BurpExtension {
         if (fileWriter != null) {
             fileWriter.println("[ERROR] " + message);
         }
-    }
-
-    private boolean hasAnyActionFlag(String[] args) {
-        for (String arg : args) {
-            if (arg.contains("proxyHistory") || arg.contains("siteMap")
-                    || arg.startsWith("responseHeader=") || arg.startsWith("responseBody=")
-                    || arg.startsWith("ignoreExt=") || arg.startsWith("outputFile=")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private boolean isIgnored(String url, Set<String> ignored) {
