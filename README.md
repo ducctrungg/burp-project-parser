@@ -39,5 +39,5 @@ See [USAGE.md](USAGE.md) for CLI flags, CSV format, and examples.
 
 ## Credits
 
-- [BuffaloWill/burpsuite-project-file-parser](https://github.com/BuffaloWill/burpsuite-project-file-parser) — Original project that this extension is based on
-- [NonManuall/SAVER_LOGGER](https://github.com/NonManuall/SAVER_LOGGER) — Reference implementation for extension features
+- [BuffaloWill/burpsuite-project-file-parser](https://github.com/BuffaloWill/burpsuite-project-file-parser)
+- [NonManuall/SAVER_LOGGER](https://github.com/NonManuall/SAVER_LOGGER)
