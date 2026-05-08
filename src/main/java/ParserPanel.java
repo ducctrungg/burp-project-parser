@@ -9,7 +9,6 @@ public class ParserPanel extends JPanel {
     private final Consumer<ParsingConfig> onRun;
 
     // Flag checkboxes
-    private final JCheckBox auditItemsCheckbox = new JCheckBox("Audit Items");
     private final JCheckBox proxyHistoryCheckbox = new JCheckBox("Proxy History");
     private final JCheckBox proxyHistoryResponseCheckbox = new JCheckBox("include responses");
     private final JCheckBox siteMapCheckbox = new JCheckBox("Site Map");
@@ -49,7 +48,6 @@ public class ParserPanel extends JPanel {
 
         // Flags section
         JPanel flagsPanel = createSection("Extract Data From");
-        flagsPanel.add(auditItemsCheckbox);
 
         JPanel proxyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         proxyRow.add(proxyHistoryCheckbox);
@@ -141,7 +139,7 @@ public class ParserPanel extends JPanel {
     private void chooseOutputFile() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Save Output As");
-        chooser.setSelectedFile(new java.io.File("output.json"));
+        chooser.setSelectedFile(new java.io.File("output.csv"));
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             outputFileField.setText(chooser.getSelectedFile().getAbsolutePath());
         }
@@ -149,7 +147,6 @@ public class ParserPanel extends JPanel {
 
     private void runParsing() {
         ParsingConfig config = new ParsingConfig(
-                auditItemsCheckbox.isSelected(),
                 proxyHistoryCheckbox.isSelected(),
                 proxyHistoryCheckbox.isSelected() && proxyHistoryResponseCheckbox.isSelected(),
                 siteMapCheckbox.isSelected(),
@@ -162,7 +159,7 @@ public class ParserPanel extends JPanel {
                 ParsingConfig.parseExtensions(ignoreExtField.getText())
         );
 
-        if (!config.auditItems() && !config.proxyHistory() && !config.siteMap()
+        if (!config.proxyHistory() && !config.siteMap()
                 && !config.responseHeader() && !config.responseBody()) {
             statusLabel.setText("Please select at least one option.");
             return;

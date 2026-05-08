@@ -1,4 +1,4 @@
-# Implementation Plan: GUI Tab + Ignore Static Files
+# Implementation Plan: GUI Tab + Ignore Static Files + CSV Export
 
 ## Overview
 
@@ -15,7 +15,6 @@ In `initialize()`, detect if CLI flags are present:
 A Swing `JPanel` with these sections:
 
 ### Flag Checkboxes (top)
-- `auditItems` — checkbox
 - `proxyHistory` — checkbox
 - `siteMap` — checkbox
 
@@ -50,10 +49,10 @@ if (containsAny(args, "...")) {
 ```
 
 ### Extracted `runFromCli(String[] args)`
-Contains all the current CLI processing logic (flag parsing, proxy history, audit items, site map, response search, output file, shutdown).
+Contains all the current CLI processing logic (flag parsing, proxy history, site map, response search, output file, shutdown).
 
 ### Reusable `runParser(args)` (used by both CLI and GUI)
-Extracts the core parsing logic that both paths can call: proxy history, audit items, site map, response search, file output.
+Extracts the core parsing logic that both paths can call: proxy history, site map, response search, file output.
 
 ## Data Flow
 
@@ -88,7 +87,7 @@ Allow users to skip URLs ending in common static file extensions (gif, jpg, png,
 ### `ParsingConfig.java`
 
 - Add `Set<String> ignoredExtensions` field
-- Default ignored extensions constant: `gif,jpg,jpeg,png,css,mp3,mp4,wav,ico,map,woff,woff2,svg,ttf,pdf,otf,doc,docx`
+- Default ignored extensions constant: `gif,jpg,jpeg,png,css,css2,mp3,mp4,wav,ico,map,woff,woff2,svg,ttf,pdf,otf,doc,docx`
 - Parse new CLI flag: `ignoreExt=<comma-separated-list>`
   - No flag → use default set
   - `ignoreExt=none` → empty set (no filtering)
@@ -128,6 +127,77 @@ java -jar burpsuite_pro.jar --project-file=target.burp proxyHistory ignoreExt=gi
 ```
 
 Omitted → uses default list. `ignoreExt=none` → no filtering.
+
+## Build Validation
+
+```bash
+./gradlew clean build
+```
+
+---
+
+# Phase 3: CSV Export Format
+
+## Overview
+
+Change output format from JSON to CSV for proxy history and site map exports. Remove auditItems entirely. Response header/body search results remain as JSON.
+
+## CSV Column Format
+
+| Column | Source |
+|--------|--------|
+| No | Sequential counter (1, 2, 3...) |
+| Host | Extracted from URL via `java.net.URI(url).getHost()` |
+| Request Method | `request.method()` |
+| URL | `request.url()` (includes query) |
+| Headers | `request.headers()` joined by `\n`, CSV-escaped with `"` |
+| Body | `request.bodyToString()`, CSV-escaped |
+| Status Code | `response.statusCode()` (int) |
+| Response Body* | `response.bodyToString()`, CSV-escaped |
+
+\* Response Body column only when "include responses" is checked.
+
+## Changes
+
+### `ParsingConfig.java`
+- Remove `auditItems` field from record
+- Remove `contains(args, "auditItems")` from `fromCliArgs()`
+- Shorter constructor (10 params instead of 11)
+
+### `ParserPanel.java`
+- Remove `auditItemsCheckbox` and its row in flags panel
+- Remove `auditItems` from validation ("select at least one option")
+- Remove `auditItems` from `runParsing()` constructor call
+- Change default save filename from `output.json` → `output.csv`
+
+### `Extension.java`
+- **Remove**: `printAuditItems()`, `issueToJson()`, `headersToJsonArray()`
+- **Remove**: `auditItems` from `executeParsing()` and `hasAnyActionFlag()`
+- **Remove unused imports**: `AuditIssue`, `Gson`, `HashMap`, `Map`, `JsonArray`, `JsonElement`
+- **Add imports**: `java.net.URI`
+- **Add helpers**:
+  - `escapeCsv(String value)` — quotes if contains comma/quote/newline, escapes `"` as `""`
+  - `formatHeaders(List<HttpHeader> headers)` — joins with `\n`
+  - `extractHost(String url)` — parses host via `URI.create(url).getHost()`
+- **Rewrite** `printProxyHistory()` — CSV header row + rows with counter, host, method, URL, headers, body, status code [, response body]
+- **Rewrite** `printHistory()` — same CSV format
+- **Keep unchanged**: `processResponseHeaders()`, `processResponseBodies()` (still JSON), all other methods
+
+### `USAGE.md`
+- Remove `auditItems` from flags table and examples
+- Document CSV columns
+- Note that `responseHeader`/`responseBody` still output JSON
+- Change file references from `.json` → `.csv`
+
+## Example CSV Output
+
+```csv
+No,Host,Request Method,URL,Headers,Body,Status Code
+1,example.com,GET,https://example.com/api/users,"Host: example.com
+Accept: application/json",,200
+2,example.com,POST,https://example.com/api/login,"Host: example.com
+Content-Type: application/json","{""user"":""admin""}",302
+```
 
 ## Build Validation
 

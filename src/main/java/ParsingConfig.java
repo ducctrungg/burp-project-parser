@@ -1,11 +1,8 @@
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 public record ParsingConfig(
-        boolean auditItems,
         boolean proxyHistory,
         boolean proxyHistoryResponse,
         boolean siteMap,
@@ -18,7 +15,7 @@ public record ParsingConfig(
         Set<String> ignoredExtensions) {
 
     public static final String DEFAULT_IGNORED_EXTENSIONS =
-            "gif,jpg,jpeg,png,css,mp3,mp4,wav,ico,map,woff,woff2,svg,ttf,pdf,otf,doc,docx";
+            "gif,jpg,jpeg,png,css,css2,mp3,mp4,wav,ico,map,woff,woff2,svg,ttf,pdf,otf,doc,docx";
 
     public static ParsingConfig fromCliArgs(String[] args) {
         String ignoreExt = containsPrefix(args, "ignoreExt=");
@@ -32,7 +29,6 @@ public record ParsingConfig(
         }
 
         return new ParsingConfig(
-                contains(args, "auditItems"),
                 contains(args, "proxyHistory"),
                 containsAny(args, "proxyHistory.response", "proxyHistory.both"),
                 contains(args, "siteMap"),
