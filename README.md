@@ -36,3 +36,8 @@ See [USAGE.md](USAGE.md) for CLI flags, CSV format, and examples.
 - [docs/montoya-api-examples.md](docs/montoya-api-examples.md) — API patterns
 - [docs/development-best-practices.md](docs/development-best-practices.md) — dev guidelines
 - [docs/bapp-store-requirements.md](docs/bapp-store-requirements.md) — BApp Store submission
+
+## Credits
+
+- [BuffaloWill/burpsuite-project-file-parser](https://github.com/BuffaloWill/burpsuite-project-file-parser) — Original project that this extension is based on
+- [NonManuall/SAVER_LOGGER](https://github.com/NonManuall/SAVER_LOGGER) — Reference implementation for extension features
