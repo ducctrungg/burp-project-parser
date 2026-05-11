@@ -20,7 +20,7 @@ public record ParsingConfig(
             "gif,jpg,jpeg,png,css,css2,mp3,mp4,wav,ico,map,woff,woff2,svg,ttf,pdf,otf,doc,docx";
 
     public static final String DEFAULT_IGNORED_CONTENT_TYPES =
-            "text/javascript,application/javascript,application/x-javascript,image/png,image/jpeg,image/gif,image/svg+xml,image/webp,image/x-icon,text/css,audio/mpeg,audio/ogg,video/mp4,font/woff,font/woff2,font/ttf,font/otf,application/pdf,application/font-woff,application/font-woff2";
+            "text/javascript,application/javascript,application/x-javascript,image/png,image/jpeg,image/gif,image/svg+xml,image/webp,image/x-icon,text/css,audio/mpeg,audio/ogg,video/mp4,font/woff,font/woff2,font/ttf,font/otf,application/pdf,application/font-woff,application/font-woff2,application/octet-stream";
 
     public static Set<String> parseExtensions(String input) {
         return parseCommaSeparated(input);
