@@ -14,6 +14,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -65,7 +66,8 @@ public class Extension implements BurpExtension {
     private void openOutputFile(String path) {
         if (path == null || path.isEmpty()) return;
         try {
-            fileWriter = new PrintWriter(new FileWriter(path), true);
+            fileWriter = new PrintWriter(new FileWriter(path, StandardCharsets.UTF_8), true);
+            fileWriter.write('\uFEFF');
         } catch (IOException e) {
             writeError("Failed to open output file: " + e.getMessage());
         }
