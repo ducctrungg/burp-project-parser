@@ -23,6 +23,10 @@ public class ParserPanel extends JPanel {
     // Ignore extensions section
     private final JTextField ignoreExtField = new JTextField(ParsingConfig.DEFAULT_IGNORED_EXTENSIONS, 50);
 
+    // Content-type filtering
+    private final JCheckBox ignoreContentTypeCheckbox = new JCheckBox("Ignore response with these Content-Type:");
+    private final JTextField ignoreContentTypeField = new JTextField(ParsingConfig.DEFAULT_IGNORED_CONTENT_TYPES, 50);
+
     // Output file section
     private final JTextField outputFileField = new JTextField(40);
     private final JButton browseButton = new JButton("Browse...");
@@ -94,10 +98,19 @@ public class ParserPanel extends JPanel {
         // Ignore extensions section
         JPanel ignorePanel = createSection("Ignore Static Files");
         JPanel ignoreRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        ignoreRow.add(new JLabel("Skip URLs ending in these extensions (comma-separated):"));
+        ignoreRow.add(new JLabel("Ignore URLs ending with extensions:"));
         ignoreRow.add(Box.createHorizontalStrut(5));
         ignoreRow.add(ignoreExtField);
         ignorePanel.add(ignoreRow);
+
+        JPanel contentTypeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        contentTypeRow.add(ignoreContentTypeCheckbox);
+        contentTypeRow.add(Box.createHorizontalStrut(5));
+        contentTypeRow.add(ignoreContentTypeField);
+        ignoreContentTypeField.setEnabled(false);
+        ignoreContentTypeCheckbox.addActionListener(e ->
+                ignoreContentTypeField.setEnabled(ignoreContentTypeCheckbox.isSelected()));
+        ignorePanel.add(contentTypeRow);
 
         centerPanel.add(ignorePanel);
         centerPanel.add(Box.createVerticalStrut(10));
@@ -156,7 +169,9 @@ public class ParserPanel extends JPanel {
                 responseBodyCheckbox.isSelected(),
                 responseBodyField.getText(),
                 outputFileField.getText().isEmpty() ? null : outputFileField.getText(),
-                ParsingConfig.parseExtensions(ignoreExtField.getText())
+                ParsingConfig.parseExtensions(ignoreExtField.getText()),
+                ignoreContentTypeCheckbox.isSelected(),
+                ParsingConfig.parseContentTypes(ignoreContentTypeField.getText())
         );
 
         if (!config.proxyHistory() && !config.siteMap()

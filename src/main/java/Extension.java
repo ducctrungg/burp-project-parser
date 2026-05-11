@@ -45,18 +45,20 @@ public class Extension implements BurpExtension {
     }
 
     private void executeParsing(ParsingConfig config) {
-        Set<String> ignored = config.ignoredExtensions();
+        Set<String> ignoredExt = config.ignoredExtensions();
+        boolean checkContentType = config.ignoreContentType();
+        Set<String> ignoredContentTypes = config.ignoredContentTypes();
         if (config.proxyHistory()) {
-            printProxyHistory(proxy.history(), config.proxyHistoryResponse(), ignored);
+            printProxyHistory(proxy.history(), config.proxyHistoryResponse(), ignoredExt, checkContentType, ignoredContentTypes);
         }
         if (config.siteMap()) {
-            printHistory(siteMap.requestResponses(), config.siteMapResponse(), ignored);
+            printHistory(siteMap.requestResponses(), config.siteMapResponse(), ignoredExt, checkContentType, ignoredContentTypes);
         }
         if (config.responseHeader()) {
-            processResponseHeaders(proxy.history(), config.responseHeaderRegex(), ignored);
+            processResponseHeaders(proxy.history(), config.responseHeaderRegex(), ignoredExt, checkContentType, ignoredContentTypes);
         }
         if (config.responseBody()) {
-            processResponseBodies(proxy.history(), config.responseBodyRegex(), ignored);
+            processResponseBodies(proxy.history(), config.responseBodyRegex(), ignoredExt, checkContentType, ignoredContentTypes);
         }
     }
 
@@ -109,13 +111,14 @@ public class Extension implements BurpExtension {
         return sb.toString();
     }
 
-    private void printHistory(List<HttpRequestResponse> history, boolean includeResponse, Set<String> ignored) {
+    private void printHistory(List<HttpRequestResponse> history, boolean includeResponse,
+                              Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
         writeCsvHeader(includeResponse);
         int no = 1;
         for (HttpRequestResponse reqRes : history) {
             try {
                 String url = reqRes.request().url();
-                if (isIgnored(url, ignored)) continue;
+                if (isIgnored(url, ignoredExt)) continue;
 
                 String host = extractHost(url);
                 String method = reqRes.request().method();
@@ -125,8 +128,11 @@ public class Extension implements BurpExtension {
                 String responseBody = "";
 
                 if (reqRes.response() != null) {
+                    if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                     statusCode = String.valueOf(reqRes.response().statusCode());
                     responseBody = reqRes.response().bodyToString();
+                } else if (checkContentType) {
+                    continue;
                 }
 
                 String line = no + ","
@@ -149,13 +155,14 @@ public class Extension implements BurpExtension {
         }
     }
 
-    private void printProxyHistory(List<ProxyHttpRequestResponse> history, boolean includeResponse, Set<String> ignored) {
+    private void printProxyHistory(List<ProxyHttpRequestResponse> history, boolean includeResponse,
+                                   Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
         writeCsvHeader(includeResponse);
         int no = 1;
         for (ProxyHttpRequestResponse reqRes : history) {
             try {
                 String url = reqRes.request().url() + reqRes.request().query();
-                if (isIgnored(url, ignored)) continue;
+                if (isIgnored(url, ignoredExt)) continue;
 
                 String host = extractHost(url);
                 String method = reqRes.request().method();
@@ -165,8 +172,11 @@ public class Extension implements BurpExtension {
                 String responseBody = "";
 
                 if (reqRes.response() != null) {
+                    if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                     statusCode = String.valueOf(reqRes.response().statusCode());
                     responseBody = reqRes.response().bodyToString();
+                } else if (checkContentType) {
+                    continue;
                 }
 
                 String line = no + ","
@@ -189,13 +199,15 @@ public class Extension implements BurpExtension {
         }
     }
 
-    private void processResponseHeaders(List<ProxyHttpRequestResponse> history, String regex, Set<String> ignored) {
+    private void processResponseHeaders(List<ProxyHttpRequestResponse> history, String regex,
+                                        Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
         Pattern pattern = Pattern.compile(regex);
         for (ProxyHttpRequestResponse reqRes : history) {
             try {
                 if (reqRes.response() == null) continue;
                 String url = reqRes.request().url();
-                if (isIgnored(url, ignored)) continue;
+                if (isIgnored(url, ignoredExt)) continue;
+                if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                 for (HttpHeader header : reqRes.response().headers()) {
                     if (pattern.matcher(header.toString()).find()) {
                         JsonObject output = new JsonObject();
@@ -210,13 +222,15 @@ public class Extension implements BurpExtension {
         }
     }
 
-    private void processResponseBodies(List<ProxyHttpRequestResponse> history, String regex, Set<String> ignored) {
+    private void processResponseBodies(List<ProxyHttpRequestResponse> history, String regex,
+                                       Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
         Pattern pattern = Pattern.compile(regex);
         for (ProxyHttpRequestResponse reqRes : history) {
             try {
                 if (reqRes.response() == null) continue;
                 String url = reqRes.request().url();
-                if (isIgnored(url, ignored)) continue;
+                if (isIgnored(url, ignoredExt)) continue;
+                if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                 String body = reqRes.response().bodyToString();
                 if (pattern.matcher(body).find()) {
                     JsonObject output = new JsonObject();
@@ -258,5 +272,19 @@ public class Extension implements BurpExtension {
         if (lastDot == -1 || lastDot == fileName.length() - 1) return false;
         String ext = fileName.substring(lastDot + 1).toLowerCase();
         return ignored.contains(ext);
+    }
+
+    private boolean isIgnoredByContentType(HttpResponse response, Set<String> ignoredContentTypes) {
+        if (response == null || ignoredContentTypes == null || ignoredContentTypes.isEmpty()) return false;
+        for (HttpHeader header : response.headers()) {
+            if ("content-type".equalsIgnoreCase(header.name())) {
+                String value = header.value();
+                int semicolon = value.indexOf(';');
+                String mimeType = (semicolon != -1) ? value.substring(0, semicolon).strip().toLowerCase()
+                                                     : value.strip().toLowerCase();
+                return ignoredContentTypes.contains(mimeType);
+            }
+        }
+        return false;
     }
 }
