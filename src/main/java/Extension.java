@@ -106,6 +106,7 @@ public class Extension implements BurpExtension {
     private void openDb(String path) {
         if (path == null || path.isEmpty()) return;
         try {
+            Class.forName("org.sqlite.JDBC");
             dbConnection = DriverManager.getConnection("jdbc:sqlite:" + path);
             dbMode = true;
             createDbTables();
@@ -117,7 +118,7 @@ public class Extension implements BurpExtension {
                 "INSERT INTO response_headers_search(url,header) VALUES(?,?)");
             psResponseBody = dbConnection.prepareStatement(
                 "INSERT INTO response_bodies_search(url,body) VALUES(?,?)");
-        } catch (SQLException e) {
+        } catch (Exception e) {
             writeError("Failed to open DB: " + e.getMessage());
         }
     }
