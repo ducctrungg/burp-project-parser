@@ -8,23 +8,23 @@ public class ParserPanel extends JPanel {
     private final MontoyaApi api;
     private final Consumer<ParsingConfig> onRun;
 
-    // Flag checkboxes
+        // Flag checkboxes
     private final JCheckBox proxyHistoryCheckbox = new JCheckBox("Proxy History");
-    private final JCheckBox proxyHistoryResponseCheckbox = new JCheckBox("include responses");
+    private final JCheckBox proxyHistoryResponseCheckbox = new JCheckBox("+ Response");
     private final JCheckBox siteMapCheckbox = new JCheckBox("Site Map");
-    private final JCheckBox siteMapResponseCheckbox = new JCheckBox("include responses");
+    private final JCheckBox siteMapResponseCheckbox = new JCheckBox("+ Response");
 
     // Search section
-    private final JCheckBox responseHeaderCheckbox = new JCheckBox("Response Header regex:");
+    private final JCheckBox responseHeaderCheckbox = new JCheckBox("Header:");
     private final JTextField responseHeaderField = new JTextField(30);
-    private final JCheckBox responseBodyCheckbox = new JCheckBox("Response Body regex:");
+    private final JCheckBox responseBodyCheckbox = new JCheckBox("Body:");
     private final JTextField responseBodyField = new JTextField(30);
 
     // Ignore extensions section
     private final JTextField ignoreExtField = new JTextField(ParsingConfig.DEFAULT_IGNORED_EXTENSIONS, 50);
 
     // Content-type filtering
-    private final JCheckBox ignoreContentTypeCheckbox = new JCheckBox("Ignore response with these Content-Type:");
+    private final JCheckBox ignoreContentTypeCheckbox = new JCheckBox("Content-Type:");
     private final JTextField ignoreContentTypeField = new JTextField(ParsingConfig.DEFAULT_IGNORED_CONTENT_TYPES, 50);
 
     // Output file section
@@ -45,14 +45,14 @@ public class ParserPanel extends JPanel {
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(10, 10));
-        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        setLayout(new BorderLayout(4, 4));
+        setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
         JPanel centerPanel = new JPanel();
         centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
 
         // Flags section
-        JPanel flagsPanel = createSection("Extract Data From");
+        JPanel flagsPanel = createSection("Data Sources");
 
         JPanel proxyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         proxyRow.add(proxyHistoryCheckbox);
@@ -73,10 +73,10 @@ public class ParserPanel extends JPanel {
         flagsPanel.add(siteMapRow);
 
         centerPanel.add(flagsPanel);
-        centerPanel.add(Box.createVerticalStrut(10));
+        centerPanel.add(Box.createVerticalStrut(4));
 
         // Search section
-        JPanel searchPanel = createSection("Search Responses");
+        JPanel searchPanel = createSection("Regex Search");
         JPanel headerRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         headerRow.add(responseHeaderCheckbox);
         headerRow.add(responseHeaderField);
@@ -94,12 +94,12 @@ public class ParserPanel extends JPanel {
         searchPanel.add(bodyRow);
 
         centerPanel.add(searchPanel);
-        centerPanel.add(Box.createVerticalStrut(10));
+        centerPanel.add(Box.createVerticalStrut(4));
 
         // Ignore extensions section
-        JPanel ignorePanel = createSection("Ignore Static Files");
+        JPanel ignorePanel = createSection("Filter Static Files");
         JPanel ignoreRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        ignoreRow.add(new JLabel("Ignore URLs ending with extensions:"));
+        ignoreRow.add(new JLabel("Extensions:"));
         ignoreRow.add(Box.createHorizontalStrut(5));
         ignoreRow.add(ignoreExtField);
         ignorePanel.add(ignoreRow);
@@ -114,23 +114,23 @@ public class ParserPanel extends JPanel {
         ignorePanel.add(contentTypeRow);
 
         centerPanel.add(ignorePanel);
-        centerPanel.add(Box.createVerticalStrut(10));
+        centerPanel.add(Box.createVerticalStrut(4));
 
         // Output file section
         JPanel outputPanel = createSection("Output");
-        JPanel fileRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        fileRow.add(new JLabel("Save to:"));
-        fileRow.add(Box.createHorizontalStrut(5));
-        fileRow.add(outputFileField);
-        fileRow.add(Box.createHorizontalStrut(5));
-        fileRow.add(browseButton);
-        outputPanel.add(fileRow);
-
         JPanel formatRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         formatRow.add(new JLabel("Format:"));
         formatRow.add(Box.createHorizontalStrut(5));
         formatRow.add(formatCombo);
         outputPanel.add(formatRow);
+
+        JPanel fileRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        fileRow.add(new JLabel("File:"));
+        fileRow.add(Box.createHorizontalStrut(5));
+        fileRow.add(outputFileField);
+        fileRow.add(Box.createHorizontalStrut(5));
+        fileRow.add(browseButton);
+        outputPanel.add(fileRow);
 
         browseButton.addActionListener(e -> chooseOutputFile());
         formatCombo.addActionListener(e -> onFormatChanged());
