@@ -24,7 +24,7 @@ public class ParserPanel extends JPanel {
     private final JTextField ignoreExtField = new JTextField(ParsingConfig.DEFAULT_IGNORED_EXTENSIONS, 50);
 
     // Content-type filtering
-    private final JCheckBox ignoreContentTypeCheckbox = new JCheckBox("Content-Type:");
+    private final JCheckBox ignoreContentTypeCheckbox = new JCheckBox("Response Content-Type:");
     private final JTextField ignoreContentTypeField = new JTextField(ParsingConfig.DEFAULT_IGNORED_CONTENT_TYPES, 50);
 
     // Output file section
