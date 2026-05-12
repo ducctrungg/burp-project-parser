@@ -45,11 +45,11 @@ public class Extension implements BurpExtension {
         this.proxy = api.proxy();
         this.siteMap = api.siteMap();
 
-        montoyaApi.extension().setName("BurpSuite Project File Parser");
+        montoyaApi.extension().setName("Log Extractor");
 
         api.extension().registerUnloadingHandler(this::cleanup);
 
-        api.userInterface().registerSuiteTab("BurpSuite Extractor",
+        api.userInterface().registerSuiteTab("Log Extractor",
                 new ParserPanel(api, this::runParsing));
     }
 
