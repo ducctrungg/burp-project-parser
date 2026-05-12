@@ -40,6 +40,20 @@ JAR output: `build/libs/` - load directly into Burp Suite.
 - `docs/development-best-practices.md` - Dev guidelines
 - `docs/resources.md` - External links
 
+## Commit Convention
+
+Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+
 ## Current State
 
 GUI extension. Main class registers "BurpSuite Extractor" tab. Processing methods: printProxyHistory, printHistory, processResponseHeaders, processResponseBodies. CSV output via writeCsvHeader/escapeCsv helpers.
