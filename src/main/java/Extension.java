@@ -15,6 +15,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -25,6 +31,12 @@ public class Extension implements BurpExtension {
     private Proxy proxy;
     private SiteMap siteMap;
     private PrintWriter fileWriter;
+    private Connection dbConnection;
+    private boolean dbMode;
+    private PreparedStatement psProxyHistory;
+    private PreparedStatement psSiteMap;
+    private PreparedStatement psResponseHeader;
+    private PreparedStatement psResponseBody;
 
     @Override
     public void initialize(MontoyaApi montoyaApi) {
@@ -35,14 +47,10 @@ public class Extension implements BurpExtension {
 
         montoyaApi.extension().setName("BurpSuite Project File Parser");
 
-        api.extension().registerUnloadingHandler(this::closeOutputFile);
+        api.extension().registerUnloadingHandler(this::cleanup);
 
         api.userInterface().registerSuiteTab("BurpSuite Extractor",
-                new ParserPanel(api, config -> {
-                    openOutputFile(config.outputFile());
-                    executeParsing(config);
-                    closeOutputFile();
-                }));
+                new ParserPanel(api, this::runParsing));
     }
 
     private void executeParsing(ParsingConfig config) {
@@ -63,11 +71,26 @@ public class Extension implements BurpExtension {
         }
     }
 
+    private void runParsing(ParsingConfig config) {
+        if (config.isDbOutput()) {
+            openDb(config.outputFile());
+        } else {
+            openOutputFile(config.outputFile());
+        }
+        executeParsing(config);
+        if (dbMode) {
+            closeDb();
+        } else {
+            closeOutputFile();
+        }
+    }
+
     private void openOutputFile(String path) {
         if (path == null || path.isEmpty()) return;
         try {
             fileWriter = new PrintWriter(new FileWriter(path, StandardCharsets.UTF_8), true);
             fileWriter.write('\uFEFF');
+            dbMode = false;
         } catch (IOException e) {
             writeError("Failed to open output file: " + e.getMessage());
         }
@@ -77,6 +100,124 @@ public class Extension implements BurpExtension {
         if (fileWriter != null) {
             fileWriter.close();
             fileWriter = null;
+        }
+    }
+
+    private void openDb(String path) {
+        if (path == null || path.isEmpty()) return;
+        try {
+            dbConnection = DriverManager.getConnection("jdbc:sqlite:" + path);
+            dbMode = true;
+            createDbTables();
+            psProxyHistory = dbConnection.prepareStatement(
+                "INSERT INTO proxy_history(host,request_method,url,headers,body,status_code,response_body) VALUES(?,?,?,?,?,?,?)");
+            psSiteMap = dbConnection.prepareStatement(
+                "INSERT INTO site_map(host,request_method,url,headers,body,status_code,response_body) VALUES(?,?,?,?,?,?,?)");
+            psResponseHeader = dbConnection.prepareStatement(
+                "INSERT INTO response_headers_search(url,header) VALUES(?,?)");
+            psResponseBody = dbConnection.prepareStatement(
+                "INSERT INTO response_bodies_search(url,body) VALUES(?,?)");
+        } catch (SQLException e) {
+            writeError("Failed to open DB: " + e.getMessage());
+        }
+    }
+
+    private void closeDb() {
+        try {
+            if (psProxyHistory != null) { psProxyHistory.close(); psProxyHistory = null; }
+            if (psSiteMap != null) { psSiteMap.close(); psSiteMap = null; }
+            if (psResponseHeader != null) { psResponseHeader.close(); psResponseHeader = null; }
+            if (psResponseBody != null) { psResponseBody.close(); psResponseBody = null; }
+            if (dbConnection != null) { dbConnection.close(); dbConnection = null; }
+        } catch (SQLException e) {
+            writeError("Failed to close DB: " + e.getMessage());
+        }
+        dbMode = false;
+    }
+
+    private void cleanup() {
+        closeOutputFile();
+        closeDb();
+    }
+
+    private void createDbTables() throws SQLException {
+        try (Statement stmt = dbConnection.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS proxy_history(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "host TEXT,request_method TEXT,url TEXT,headers TEXT,body TEXT," +
+                "status_code INTEGER,response_body BLOB)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS site_map(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "host TEXT,request_method TEXT,url TEXT,headers TEXT,body TEXT," +
+                "status_code INTEGER,response_body BLOB)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS response_headers_search(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "url TEXT,header TEXT)");
+            stmt.execute("CREATE TABLE IF NOT EXISTS response_bodies_search(" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "url TEXT,body BLOB)");
+        }
+    }
+
+    private void insertProxyHistoryDb(String host, String method, String url, String headers, String body, int statusCode, byte[] responseBytes) {
+        try {
+            psProxyHistory.setString(1, host);
+            psProxyHistory.setString(2, method);
+            psProxyHistory.setString(3, url);
+            psProxyHistory.setString(4, headers);
+            psProxyHistory.setString(5, body);
+            psProxyHistory.setInt(6, statusCode);
+            if (responseBytes != null) {
+                psProxyHistory.setBytes(7, responseBytes);
+            } else {
+                psProxyHistory.setNull(7, Types.BLOB);
+            }
+            psProxyHistory.executeUpdate();
+        } catch (SQLException e) {
+            writeError("DB insert error: " + e.getMessage());
+        }
+    }
+
+    private void insertSiteMapDb(String host, String method, String url, String headers, String body, int statusCode, byte[] responseBytes) {
+        try {
+            psSiteMap.setString(1, host);
+            psSiteMap.setString(2, method);
+            psSiteMap.setString(3, url);
+            psSiteMap.setString(4, headers);
+            psSiteMap.setString(5, body);
+            psSiteMap.setInt(6, statusCode);
+            if (responseBytes != null) {
+                psSiteMap.setBytes(7, responseBytes);
+            } else {
+                psSiteMap.setNull(7, Types.BLOB);
+            }
+            psSiteMap.executeUpdate();
+        } catch (SQLException e) {
+            writeError("DB insert error: " + e.getMessage());
+        }
+    }
+
+    private void insertResponseHeaderDb(String url, String header) {
+        try {
+            psResponseHeader.setString(1, url);
+            psResponseHeader.setString(2, header);
+            psResponseHeader.executeUpdate();
+        } catch (SQLException e) {
+            writeError("DB insert error: " + e.getMessage());
+        }
+    }
+
+    private void insertResponseBodyDb(String url, byte[] body) {
+        try {
+            psResponseBody.setString(1, url);
+            if (body != null) {
+                psResponseBody.setBytes(2, body);
+            } else {
+                psResponseBody.setNull(2, Types.BLOB);
+            }
+            psResponseBody.executeUpdate();
+        } catch (SQLException e) {
+            writeError("DB insert error: " + e.getMessage());
         }
     }
 
@@ -115,7 +256,7 @@ public class Extension implements BurpExtension {
 
     private void printHistory(List<HttpRequestResponse> history, boolean includeResponse,
                               Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
-        writeCsvHeader(includeResponse);
+        if (!dbMode) writeCsvHeader(includeResponse);
         int no = 1;
         for (HttpRequestResponse reqRes : history) {
             try {
@@ -126,30 +267,30 @@ public class Extension implements BurpExtension {
                 String method = reqRes.request().method();
                 String headers = formatHeaders(reqRes.request().headers());
                 String body = reqRes.request().bodyToString();
-                String statusCode = "";
-                String responseBody = "";
+                int statusCode = 0;
+                String responseBodyCsv = "";
+                byte[] responseBytes = null;
 
                 if (reqRes.response() != null) {
                     if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
-                    statusCode = String.valueOf(reqRes.response().statusCode());
-                    responseBody = reqRes.response().bodyToString();
+                    statusCode = reqRes.response().statusCode();
+                    responseBodyCsv = reqRes.response().bodyToString();
+                    responseBytes = reqRes.response().body().getBytes();
                 } else if (checkContentType) {
                     continue;
                 }
 
-                String line = no + ","
-                        + escapeCsv(host) + ","
-                        + method + ","
-                        + escapeCsv(url) + ","
-                        + escapeCsv(headers) + ","
-                        + escapeCsv(body) + ","
-                        + statusCode;
-
-                if (includeResponse) {
-                    line += "," + escapeCsv(responseBody);
+                if (dbMode) {
+                    insertSiteMapDb(host, method, url, headers, body, statusCode, responseBytes);
+                } else {
+                    String line = no + "," + escapeCsv(host) + "," + method + ","
+                            + escapeCsv(url) + "," + escapeCsv(headers) + ","
+                            + escapeCsv(body) + "," + statusCode;
+                    if (includeResponse) {
+                        line += "," + escapeCsv(responseBodyCsv);
+                    }
+                    writeOutput(line);
                 }
-
-                writeOutput(line);
                 no++;
             } catch (Exception e) {
                 writeOutput("Error processing request/response: " + e.getMessage());
@@ -159,7 +300,7 @@ public class Extension implements BurpExtension {
 
     private void printProxyHistory(List<ProxyHttpRequestResponse> history, boolean includeResponse,
                                    Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
-        writeCsvHeader(includeResponse);
+        if (!dbMode) writeCsvHeader(includeResponse);
         int no = 1;
         for (ProxyHttpRequestResponse reqRes : history) {
             try {
@@ -170,30 +311,30 @@ public class Extension implements BurpExtension {
                 String method = reqRes.request().method();
                 String headers = formatHeaders(reqRes.request().headers());
                 String body = reqRes.request().bodyToString();
-                String statusCode = "";
-                String responseBody = "";
+                int statusCode = 0;
+                String responseBodyCsv = "";
+                byte[] responseBytes = null;
 
                 if (reqRes.response() != null) {
                     if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
-                    statusCode = String.valueOf(reqRes.response().statusCode());
-                    responseBody = reqRes.response().bodyToString();
+                    statusCode = reqRes.response().statusCode();
+                    responseBodyCsv = reqRes.response().bodyToString();
+                    responseBytes = reqRes.response().body().getBytes();
                 } else if (checkContentType) {
                     continue;
                 }
 
-                String line = no + ","
-                        + escapeCsv(host) + ","
-                        + method + ","
-                        + escapeCsv(url) + ","
-                        + escapeCsv(headers) + ","
-                        + escapeCsv(body) + ","
-                        + statusCode;
-
-                if (includeResponse) {
-                    line += "," + escapeCsv(responseBody);
+                if (dbMode) {
+                    insertProxyHistoryDb(host, method, url, headers, body, statusCode, responseBytes);
+                } else {
+                    String line = no + "," + escapeCsv(host) + "," + method + ","
+                            + escapeCsv(url) + "," + escapeCsv(headers) + ","
+                            + escapeCsv(body) + "," + statusCode;
+                    if (includeResponse) {
+                        line += "," + escapeCsv(responseBodyCsv);
+                    }
+                    writeOutput(line);
                 }
-
-                writeOutput(line);
                 no++;
             } catch (Exception e) {
                 writeOutput("Error processing request/response: " + e.getMessage());
@@ -212,10 +353,14 @@ public class Extension implements BurpExtension {
                 if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                 for (HttpHeader header : reqRes.response().headers()) {
                     if (pattern.matcher(header.toString()).find()) {
-                        JsonObject output = new JsonObject();
-                        output.addProperty("url", url);
-                        output.addProperty("header", header.toString());
-                        writeOutput(output.toString());
+                        if (dbMode) {
+                            insertResponseHeaderDb(url, header.toString());
+                        } else {
+                            JsonObject output = new JsonObject();
+                            output.addProperty("url", url);
+                            output.addProperty("header", header.toString());
+                            writeOutput(output.toString());
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -233,12 +378,16 @@ public class Extension implements BurpExtension {
                 String url = reqRes.request().url();
                 if (isIgnored(url, ignoredExt)) continue;
                 if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
-                String body = reqRes.response().bodyToString();
-                if (pattern.matcher(body).find()) {
-                    JsonObject output = new JsonObject();
-                    output.addProperty("url", url);
-                    output.addProperty("body", body);
-                    writeOutput(output.toString());
+                String bodyStr = reqRes.response().bodyToString();
+                if (pattern.matcher(bodyStr).find()) {
+                    if (dbMode) {
+                        insertResponseBodyDb(url, reqRes.response().body().getBytes());
+                    } else {
+                        JsonObject output = new JsonObject();
+                        output.addProperty("url", url);
+                        output.addProperty("body", bodyStr);
+                        writeOutput(output.toString());
+                    }
                 }
             } catch (Exception e) {
                 writeError(e.getMessage());

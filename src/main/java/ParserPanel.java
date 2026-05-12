@@ -30,6 +30,7 @@ public class ParserPanel extends JPanel {
     // Output file section
     private final JTextField outputFileField = new JTextField(40);
     private final JButton browseButton = new JButton("Browse...");
+    private final JComboBox<String> formatCombo = new JComboBox<>(new String[]{"CSV (.csv)", "SQLite (.db)"});
 
     // Actions
     private final JButton runButton = new JButton("Run");
@@ -125,7 +126,14 @@ public class ParserPanel extends JPanel {
         fileRow.add(browseButton);
         outputPanel.add(fileRow);
 
+        JPanel formatRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        formatRow.add(new JLabel("Format:"));
+        formatRow.add(Box.createHorizontalStrut(5));
+        formatRow.add(formatCombo);
+        outputPanel.add(formatRow);
+
         browseButton.addActionListener(e -> chooseOutputFile());
+        formatCombo.addActionListener(e -> onFormatChanged());
 
         centerPanel.add(outputPanel);
 
@@ -152,9 +160,43 @@ public class ParserPanel extends JPanel {
     private void chooseOutputFile() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Save Output As");
-        chooser.setSelectedFile(new java.io.File("output.csv"));
+        boolean isCsv = formatCombo.getSelectedIndex() == 0;
+        var csvFilter = new javax.swing.filechooser.FileNameExtensionFilter("CSV files (*.csv)", "csv");
+        var dbFilter = new javax.swing.filechooser.FileNameExtensionFilter("SQLite database (*.db)", "db");
+        chooser.addChoosableFileFilter(csvFilter);
+        chooser.addChoosableFileFilter(dbFilter);
+        chooser.setFileFilter(isCsv ? csvFilter : dbFilter);
+        String path = outputFileField.getText().trim();
+        if (path.isEmpty()) {
+            chooser.setSelectedFile(new java.io.File(isCsv ? "output.csv" : "output.db"));
+        } else {
+            chooser.setSelectedFile(new java.io.File(path));
+        }
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            outputFileField.setText(chooser.getSelectedFile().getAbsolutePath());
+            String chosen = chooser.getSelectedFile().getAbsolutePath();
+            var filter = chooser.getFileFilter();
+            if (filter instanceof javax.swing.filechooser.FileNameExtensionFilter fef) {
+                String ext = fef.getExtensions()[0];
+                if (!chosen.toLowerCase().endsWith("." + ext)) {
+                    chosen += "." + ext;
+                }
+            }
+            outputFileField.setText(chosen);
+        }
+    }
+
+    private void onFormatChanged() {
+        String current = outputFileField.getText().trim();
+        boolean isCsv = formatCombo.getSelectedIndex() == 0;
+        if (current.isEmpty()) {
+            outputFileField.setText(isCsv ? "output.csv" : "output.db");
+        } else {
+            String lower = current.toLowerCase();
+            if ((isCsv && lower.endsWith(".db")) || (!isCsv && lower.endsWith(".csv"))) {
+                String base = lower.endsWith(".csv") ? current.substring(0, current.length() - 4)
+                                                     : current.substring(0, current.length() - 3);
+                outputFileField.setText(base + (isCsv ? ".csv" : ".db"));
+            }
         }
     }
 

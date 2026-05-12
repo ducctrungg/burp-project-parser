@@ -10,6 +10,8 @@ dependencies {
     compileOnly("net.portswigger.burp.extensions:montoya-api:2026.4")
     // Source: https://mvnrepository.com/artifact/com.google.code.gson/gson
     implementation("com.google.code.gson:gson:2.14.0")
+    // Source: https://mvnrepository.com/artifact/org.xerial/sqlite-jdbc
+    implementation("org.xerial:sqlite-jdbc:3.49.1.0")
 }
 
 tasks.withType<JavaCompile>().configureEach {

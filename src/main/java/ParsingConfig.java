@@ -30,6 +30,10 @@ public record ParsingConfig(
         return parseCommaSeparated(input);
     }
 
+    public boolean isDbOutput() {
+        return outputFile != null && outputFile.toLowerCase().endsWith(".db");
+    }
+
     private static Set<String> parseCommaSeparated(String input) {
         if (input == null || input.isBlank()) return Collections.emptySet();
         Set<String> result = new HashSet<>();
