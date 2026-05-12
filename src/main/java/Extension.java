@@ -10,6 +10,7 @@ import burp.api.montoya.proxy.ProxyHttpRequestResponse;
 import burp.api.montoya.sitemap.SiteMap;
 import com.google.gson.JsonObject;
 
+import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -33,6 +34,8 @@ public class Extension implements BurpExtension {
     private PrintWriter fileWriter;
     private Connection dbConnection;
     private boolean dbMode;
+    private int dbBatchCount;
+    private static final int DB_BATCH_SIZE = 500;
     private PreparedStatement psProxyHistory;
     private PreparedStatement psSiteMap;
     private PreparedStatement psResponseHeader;
@@ -88,7 +91,7 @@ public class Extension implements BurpExtension {
     private void openOutputFile(String path) {
         if (path == null || path.isEmpty()) return;
         try {
-            fileWriter = new PrintWriter(new FileWriter(path, StandardCharsets.UTF_8), true);
+            fileWriter = new PrintWriter(new BufferedWriter(new FileWriter(path, StandardCharsets.UTF_8)));
             fileWriter.write('\uFEFF');
             dbMode = false;
         } catch (IOException e) {
@@ -98,6 +101,7 @@ public class Extension implements BurpExtension {
 
     private void closeOutputFile() {
         if (fileWriter != null) {
+            fileWriter.flush();
             fileWriter.close();
             fileWriter = null;
         }
@@ -108,6 +112,8 @@ public class Extension implements BurpExtension {
         try {
             Class.forName("org.sqlite.JDBC");
             dbConnection = DriverManager.getConnection("jdbc:sqlite:" + path);
+            dbConnection.setAutoCommit(false);
+            dbBatchCount = 0;
             dbMode = true;
             createDbTables();
             psProxyHistory = dbConnection.prepareStatement(
@@ -124,6 +130,13 @@ public class Extension implements BurpExtension {
     }
 
     private void closeDb() {
+        try {
+            if (dbConnection != null && !dbConnection.isClosed()) {
+                dbConnection.commit();
+            }
+        } catch (SQLException e) {
+            writeError("Failed to commit DB: " + e.getMessage());
+        }
         try {
             if (psProxyHistory != null) { psProxyHistory.close(); psProxyHistory = null; }
             if (psSiteMap != null) { psSiteMap.close(); psSiteMap = null; }
@@ -174,6 +187,7 @@ public class Extension implements BurpExtension {
                 psProxyHistory.setNull(7, Types.BLOB);
             }
             psProxyHistory.executeUpdate();
+            checkDbBatchCommit();
         } catch (SQLException e) {
             writeError("DB insert error: " + e.getMessage());
         }
@@ -193,6 +207,7 @@ public class Extension implements BurpExtension {
                 psSiteMap.setNull(7, Types.BLOB);
             }
             psSiteMap.executeUpdate();
+            checkDbBatchCommit();
         } catch (SQLException e) {
             writeError("DB insert error: " + e.getMessage());
         }
@@ -203,6 +218,7 @@ public class Extension implements BurpExtension {
             psResponseHeader.setString(1, url);
             psResponseHeader.setString(2, header);
             psResponseHeader.executeUpdate();
+            checkDbBatchCommit();
         } catch (SQLException e) {
             writeError("DB insert error: " + e.getMessage());
         }
@@ -217,8 +233,21 @@ public class Extension implements BurpExtension {
                 psResponseBody.setNull(2, Types.BLOB);
             }
             psResponseBody.executeUpdate();
+            checkDbBatchCommit();
         } catch (SQLException e) {
             writeError("DB insert error: " + e.getMessage());
+        }
+    }
+
+    private void checkDbBatchCommit() {
+        if (++dbBatchCount % DB_BATCH_SIZE == 0) {
+            try {
+                if (dbConnection != null && !dbConnection.isClosed()) {
+                    dbConnection.commit();
+                }
+            } catch (SQLException e) {
+                writeError("DB batch commit error: " + e.getMessage());
+            }
         }
     }
 
@@ -275,8 +304,11 @@ public class Extension implements BurpExtension {
                 if (reqRes.response() != null) {
                     if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                     statusCode = reqRes.response().statusCode();
-                    responseBodyCsv = reqRes.response().bodyToString();
-                    responseBytes = reqRes.response().body().getBytes();
+                    if (dbMode) {
+                        responseBytes = reqRes.response().body().getBytes();
+                    } else if (includeResponse) {
+                        responseBodyCsv = reqRes.response().bodyToString();
+                    }
                 } else if (checkContentType) {
                     continue;
                 }
@@ -294,9 +326,10 @@ public class Extension implements BurpExtension {
                 }
                 no++;
             } catch (Exception e) {
-                writeOutput("Error processing request/response: " + e.getMessage());
+                writeError("Error processing request/response: " + e.getMessage());
             }
         }
+        logging.logToOutput("Site Map: exported " + (no - 1) + " items");
     }
 
     private void printProxyHistory(List<ProxyHttpRequestResponse> history, boolean includeResponse,
@@ -319,8 +352,11 @@ public class Extension implements BurpExtension {
                 if (reqRes.response() != null) {
                     if (checkContentType && isIgnoredByContentType(reqRes.response(), ignoredContentTypes)) continue;
                     statusCode = reqRes.response().statusCode();
-                    responseBodyCsv = reqRes.response().bodyToString();
-                    responseBytes = reqRes.response().body().getBytes();
+                    if (dbMode) {
+                        responseBytes = reqRes.response().body().getBytes();
+                    } else if (includeResponse) {
+                        responseBodyCsv = reqRes.response().bodyToString();
+                    }
                 } else if (checkContentType) {
                     continue;
                 }
@@ -338,14 +374,16 @@ public class Extension implements BurpExtension {
                 }
                 no++;
             } catch (Exception e) {
-                writeOutput("Error processing request/response: " + e.getMessage());
+                writeError("Error processing request/response: " + e.getMessage());
             }
         }
+        logging.logToOutput("Proxy History: exported " + (no - 1) + " items");
     }
 
     private void processResponseHeaders(List<ProxyHttpRequestResponse> history, String regex,
                                         Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
         Pattern pattern = Pattern.compile(regex);
+        int count = 0;
         for (ProxyHttpRequestResponse reqRes : history) {
             try {
                 if (reqRes.response() == null) continue;
@@ -362,17 +400,20 @@ public class Extension implements BurpExtension {
                             output.addProperty("header", header.toString());
                             writeOutput(output.toString());
                         }
+                        count++;
                     }
                 }
             } catch (Exception e) {
                 writeError(e.getMessage());
             }
         }
+        logging.logToOutput("Response Headers: matched " + count + " items");
     }
 
     private void processResponseBodies(List<ProxyHttpRequestResponse> history, String regex,
                                        Set<String> ignoredExt, boolean checkContentType, Set<String> ignoredContentTypes) {
         Pattern pattern = Pattern.compile(regex);
+        int count = 0;
         for (ProxyHttpRequestResponse reqRes : history) {
             try {
                 if (reqRes.response() == null) continue;
@@ -389,15 +430,16 @@ public class Extension implements BurpExtension {
                         output.addProperty("body", bodyStr);
                         writeOutput(output.toString());
                     }
+                    count++;
                 }
             } catch (Exception e) {
                 writeError(e.getMessage());
             }
         }
+        logging.logToOutput("Response Bodies: matched " + count + " items");
     }
 
     private void writeOutput(String message) {
-        logging.logToOutput(message);
         if (fileWriter != null) {
             fileWriter.println(message);
         }
